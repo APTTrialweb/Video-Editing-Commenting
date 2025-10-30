@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Simple Video Review — Share Link + Export</title>
+  <title>Simple Video Review — Assigned To + Share Link + Export</title>
   <style>
     body{font-family:Arial,Helvetica,sans-serif;background:#0f1724;color:#e6eef8;margin:0;padding:20px}
     h1{color:#06b6d4}
@@ -21,7 +21,7 @@
   </style>
 </head>
 <body>
-  <h1>DIY Video Review (Share Link + Export)</h1>
+  <h1>DIY Video Review (Assigned To + Share Link + Export)</h1>
   <p>Paste your <strong>Dropbox</strong>, <strong>GoFile</strong>, or any direct video URL below. The app auto-converts links and lets you add timestamped comments.</p>
 
   <input id="videoURL" type="text" placeholder="Paste direct .mp4 or share link here">
@@ -34,7 +34,9 @@
     <textarea id="commentText" placeholder="Type comment..."></textarea>
     <button id="btnAdd">Add Comment at Current Time</button>
     <button id="btnExport" class="ghost">Export Comments</button>
-    <button id="btnShare" class="ghost">Generate Share Link</button>
+    <br><br>
+    <input id="editorName" type="text" placeholder="Assigned To (Editor Name)">
+    <button id="btnShare" class="ghost">Generate Share Link & Assign</button>
   </div>
 
   <div id="shareBox" class="readonly-note" style="display:none;"></div>
@@ -53,8 +55,12 @@
     const btnShare = document.getElementById('btnShare');
     const editSection = document.getElementById('editSection');
     const shareBox = document.getElementById('shareBox');
+    const editorName = document.getElementById('editorName');
 
-    // Convert seconds → hh:mm:ss
+    // 🟢 Replace this with your deployed Google Apps Script URL:
+    const GOOGLE_SCRIPT_URL = "YOUR_GOOGLE_SCRIPT_WEB_APP_URL_HERE";
+
+    // Format seconds → hh:mm:ss
     function formatTime(seconds){
       const h = Math.floor(seconds / 3600);
       const m = Math.floor((seconds % 3600) / 60);
@@ -158,19 +164,38 @@
       URL.revokeObjectURL(url);
     });
 
-    // Generate share link (Base64)
+    // Generate share link + log to Google Sheets
     btnShare.addEventListener('click', ()=>{
       const comments = loadComments();
+      const editor = editorName.value.trim();
       if(!comments.length){alert('No comments to share');return;}
+      if(!editor){alert('Please enter the editor name before generating link');return;}
+
       const data = {video: video.src || videoURL.value, comments};
       const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
       const link = `${location.origin}${location.pathname}?data=${encoded}`;
+
+      // Display share link
       shareBox.style.display='block';
-      shareBox.innerHTML = `<strong>Share this link:</strong><br><input type='text' value='${link}' style='width:100%;margin-top:6px;padding:6px;border-radius:6px;border:none;'>`;
+      shareBox.innerHTML = `<strong>Link assigned to ${editor}:</strong><br><input type='text' value='${link}' style='width:100%;margin-top:6px;padding:6px;border-radius:6px;border:none;'>`;
+
+      // Log assignment to Google Sheets
+      fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          editor: editor,
+          video: video.src || videoURL.value,
+          shareLink: link
+        })
+      }).then(()=> console.log("Logged to Google Sheet"))
+        .catch(err=> console.error("Error logging:", err));
+
       navigator.clipboard.writeText(link).catch(()=>{});
     });
 
-    // Check for shared data in URL
+    // Read-only mode for shared links
     const params = new URLSearchParams(location.search);
     if(params.has('data')){
       try{
