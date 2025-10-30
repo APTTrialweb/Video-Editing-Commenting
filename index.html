@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple Video Review — Upload & Timestamp Comments</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1320;--muted:#94a3b8;--accent:#06b6d4;--success:#10b981}
+    html,body{height:100%;margin:0;font-family:Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;color:#e6eef8;background:linear-gradient(180deg,#061021 0%, #071426 60%)}
+    .app{max-width:1100px;margin:28px auto;padding:20px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));box-shadow:0 8px 30px rgba(2,6,23,0.7)}
+    header{display:flex;align-items:center;gap:16px}
+    header h1{margin:0;font-size:20px}
+    .row{display:flex;gap:18px}
+    .left{flex:2}
+    .right{flex:1;min-width:300px}
+    .card{background:rgba(255,255,255,0.02);padding:14px;border-radius:10px}
+    input[type=file]{display:none}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    .btn{background:var(--accent);color:#042; padding:10px 12px;border-radius:8px;border:none;cursor:pointer;font-weight:600}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .small{font-size:13px;color:var(--muted)}
+    video{width:100%;border-radius:8px;background:#000}
+    .comment-row{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px}
+    .comment-time{min-width:72px;font-weight:700}
+    textarea{width:100%;min-height:70px;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
+    .list{margin-top:12px;display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto;padding-right:6px}
+    .meta{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .chip{background:rgba(255,255,255,0.02);padding:6px 8px;border-radius:999px;font-size:13px}
+    .time-link{cursor:pointer;color:var(--accent);text-decoration:underline}
+    .resolved{opacity:0.45;text-decoration:line-through}
+    footer{margin-top:16px;font-size:13px;color:var(--muted)}
+    .notice{background:linear-gradient(90deg, rgba(6,182,212,0.07), rgba(16,185,129,0.03));padding:10px;border-radius:8px;color:var(--muted);font-size:13px}
+    .controls input[type=text]{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;min-width:0}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>DIY Video Review (HTML single file)</h1>
+      <div class="small">Upload via GoFile.io (free) or paste any direct MP4 URL. Comments are stored locally and can be exported.</div>
+    </header>
+
+    <main class="row" style="margin-top:16px">
+      <section class="left card">
+        <div class="controls">
+          <label class="btn" title="Upload a file to GoFile (anonymous)">
+            Upload to GoFile
+            <input id="fileInput" type="file" accept="video/*">
+          </label>
+
+          <button id="btnPaste" class="btn ghost">Paste video URL</button>
+          <input id="videoURL" type="text" placeholder="Direct video URL (mp4) or GoFile page URL" style="flex:1">
+          <button id="btnLoad" class="btn">Load</button>
+
+          <button id="btnExport" class="btn ghost">Export comments</button>
+          <button id="btnImport" class="btn ghost">Import comments</button>
+        </div>
+
+        <div class="card" style="padding:12px">
+          <div style="display:flex;gap:10px;align-items:center;">
+            <div style="flex:1">
+              <video id="video" controls preload="metadata"></video>
+            </div>
+            <div style="width:220px">
+              <div class="meta"><div class="chip">Current time: <span id="curTime">0.0</span>s</div></div>
+              <div style="margin-top:10px"><textarea id="commentText" placeholder="Write comment for current time..."></textarea></div>
+              <div style="display:flex;gap:8px;margin-top:8px">
+                <button id="btnAdd" class="btn">Add comment at time</button>
+                <button id="btnAddRange" class="btn ghost">Add range comment</button>
+              </div>
+              <div style="margin-top:8px" class="small">Tip: Use the video controls to position the playhead then click "Add comment". Use Export to share JSON with your editor.</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px" class="card">
+          <h3 style="margin:6px 0">Comments</h3>
+          <div id="commentList" class="list"></div>
+        </div>
+
+      </section>
+
+      <aside class="right">
+        <div class="card">
+          <h3 style="margin:6px 0">Upload / GoFile helper</h3>
+          <div class="small">If you upload with the button, this app will attempt to display the returned links. NOTE: GoFile returns a page URL and a direct download link. Sometimes CORS may prevent direct playback of GoFile hosting in-browser — if that happens, copy the direct mp4 file link and paste into the "Direct video URL" field above.</div>
+          <div style="margin-top:10px" id="uploadResult"></div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3 style="margin:6px 0">Share / Persist</h3>
+          <div class="small">Comments are saved to your browser (localStorage). To share with an editor: use <strong>Export comments</strong> and send the JSON + the video link. The editor can import the JSON to see comments at exact times.</div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <h3 style="margin:6px 0">Quick workflow</h3>
+          <ol class="small">
+            <li>Editor: Upload video (GoFile) and share the direct link or GoFile page.</li>
+            <li>You: Paste link and load the video, add timestamped comments.</li>
+            <li>Export comments as JSON and send to editor. Editor imports to view comments.</li>
+          </ol>
+        </div>
+
+      </aside>
+    </main>
+
+    <footer class="small">Made for quick collaboration — open-source single-file. If you want server-based storage or a one-click shareable page for each upload I can add Firebase/Supabase integration.</footer>
+  </div>
+
+  <script>
+    // Simple single-page video review app
+    const video = document.getElementById('video');
+    const fileInput = document.getElementById('fileInput');
+    const btnLoad = document.getElementById('btnLoad');
+    const videoURL = document.getElementById('videoURL');
+    const btnPaste = document.getElementById('btnPaste');
+    const curTimeLabel = document.getElementById('curTime');
+    const btnAdd = document.getElementById('btnAdd');
+    const commentText = document.getElementById('commentText');
+    const commentList = document.getElementById('commentList');
+    const uploadResult = document.getElementById('uploadResult');
+    const btnExport = document.getElementById('btnExport');
+    const btnImport = document.getElementById('btnImport');
+    const btnAddRange = document.getElementById('btnAddRange');
+
+    // Data model: comments stored per videoSrc key
+    function storageKeyFor(videoSrc){
+      if(!videoSrc) return 'reviews:unsaved';
+      return 'reviews:' + videoSrc;
+    }
+
+    function loadCommentsFor(videoSrc){
+      const key = storageKeyFor(videoSrc);
+      try{
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : [];
+      }catch(e){return []}
+    }
+    function saveCommentsFor(videoSrc, arr){
+      const key = storageKeyFor(videoSrc);
+      localStorage.setItem(key, JSON.stringify(arr));
+    }
+
+    function renderComments(){
+      const src = video.src || videoURL.value || '';
+      const comments = loadCommentsFor(src);
+      commentList.innerHTML = '';
+      if(!comments.length) { commentList.innerHTML = '<div class="small">No comments yet</div>'; return }
+      comments.sort((a,b)=> (a.time||0)-(b.time||0));
+      comments.forEach((c, idx)=>{
+        const div = document.createElement('div'); div.className='comment-row card';
+        if(c.resolved) div.classList.add('resolved');
+        div.innerHTML = `
+          <div style="display:flex;flex-direction:column;flex:1">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div>
+                <span class="time-link" data-time="${c.time||0}">${(c.time!=null)?(c.time.toFixed(2)+'s'):'range'}</span>
+                <small class="small" style="margin-left:8px">${c.range?('['+c.range.start.toFixed(2)+' - '+c.range.end.toFixed(2)+'s]'):''}</small>
+              </div>
+              <div class="small">#${idx+1}</div>
+            </div>
+            <div style="margin-top:6px">${escapeHtml(c.text||'')}</div>
+            <div style="margin-top:8px;display:flex;gap:8px">
+              <button class="btn ghost" data-action="goto" data-idx="${idx}">Go</button>
+              <button class="btn ghost" data-action="resolve" data-idx="${idx}">${c.resolved? 'Unresolve':'Resolve'}</button>
+              <button class="btn ghost" data-action="delete" data-idx="${idx}">Delete</button>
+            </div>
+          </div>
+        `;
+        commentList.appendChild(div);
+      });
+    }
+
+    function escapeHtml(s){ return (''+s).replace(/[&<>\"]/g,ch=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[ch]||ch)); }
+
+    video.addEventListener('timeupdate', ()=>{ curTimeLabel.textContent = video.currentTime.toFixed(2); });
+
+    btnAdd.addEventListener('click', ()=>{
+      const src = video.src || videoURL.value || '';
+      if(!src){ alert('Load a video first (paste a URL or upload)'); return }
+      const comments = loadCommentsFor(src);
+      const entry = { time: video.currentTime, text: commentText.value || '(no text)', created: Date.now(), resolved:false };
+      comments.push(entry);
+      saveCommentsFor(src, comments);
+      commentText.value='';
+      renderComments();
+    });
+
+    btnAddRange.addEventListener('click', ()=>{
+      const src = video.src || videoURL.value || '';
+      if(!src){ alert('Load a video first'); return }
+      const start = parseFloat(prompt('Range start time in seconds', (video.currentTime - 3).toFixed(2))) || 0;
+      const end = parseFloat(prompt('Range end time in seconds', (video.currentTime + 3).toFixed(2))) || (start+3);
+      const comments = loadCommentsFor(src);
+      const entry = { range:{start, end}, text: commentText.value || '(no text)', created: Date.now(), resolved:false };
+      comments.push(entry);
+      saveCommentsFor(src, comments);
+      commentText.value=''; renderComments();
+    });
+
+    commentList.addEventListener('click', (ev)=>{
+      const btn = ev.target.closest('button');
+      if(!btn) return;
+      const action = btn.getAttribute('data-action');
+      const idx = parseInt(btn.getAttribute('data-idx'));
+      const src = video.src || videoURL.value || '';
+      const comments = loadCommentsFor(src);
+      if(action==='goto'){
+        const c = comments[idx];
+        if(c.range){ video.currentTime = c.range.start; video.play(); }
+        else video.currentTime = c.time || 0;
+      }else if(action==='resolve'){
+        comments[idx].resolved = !comments[idx].resolved; saveCommentsFor(src, comments); renderComments();
+      }else if(action==='delete'){
+        if(confirm('Delete this comment?')){ comments.splice(idx,1); saveCommentsFor(src, comments); renderComments(); }
+      }
+    });
+
+    commentList.addEventListener('click', (ev)=>{
+      const t = ev.target.closest('.time-link');
+      if(!t) return;
+      const time = parseFloat(t.getAttribute('data-time')||0);
+      video.currentTime = time; video.play();
+    });
+
+    // Load button
+    btnLoad.addEventListener('click', ()=>{
+      const val = videoURL.value.trim();
+      if(!val){ alert('Paste a URL or upload a file first'); return }
+      // If it's a GoFile page link (contains gofile.io), try to guess direct link; otherwise assume direct URL
+      if(val.includes('gofile.io')){
+        // We cannot reliably compute direct link in all cases. Show the page URL and encourage manual copy of direct file link if needed.
+        video.src = val; // try to load — may not work due to CORS
+        video.load();
+        setTimeout(()=>{ renderComments(); },200);
+        uploadResult.innerHTML = `<div class="small">Loaded GoFile page URL. If playback fails, open the GoFile page and copy the direct file link (ends with .mp4) and paste it here.</div>`;
+      } else {
+        video.src = val; video.load(); renderComments();
+      }
+    });
+
+    btnPaste.addEventListener('click', ()=>{ videoURL.focus(); });
+
+    // File upload to GoFile
+    fileInput.addEventListener('change', async (e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      uploadResult.innerHTML = '<div class="small">Uploading... please wait.</div>';
+      try{
+        const fd = new FormData(); fd.append('file', f);
+        // GoFile upload endpoint (anonymous uploads) — CORS and policies may change. This is a best-effort example.
+        const res = await fetch('https://api.gofile.io/uploadFile', { method:'POST', body:fd });
+        const json = await res.json();
+        uploadResult.innerHTML = '<pre class="small" style="white-space:pre-wrap;max-height:260px;overflow:auto">'+escapeHtml(JSON.stringify(json, null, 2))+'</pre>';
+        // Try common fields where the direct link may live
+        // GoFile historically returned fields like data.downloadPage or data.link or data.directLink; we'll attempt to find any .mp4 links in the JSON
+        const text = JSON.stringify(json);
+        const mp4match = text.match(/https?:\\/\\/[^\"]+?\\.(mp4|mov|webm)/gi) || text.match(/https?:\/\/[^\"]+?\.(mp4|mov|webm)/gi);
+        if(mp4match && mp4match.length){
+          const candidate = mp4match[0].replace(/\\/g,'');
+          videoURL.value = candidate;
+          video.src = candidate; video.load();
+          uploadResult.innerHTML += '<div class="small" style="margin-top:8px">Found a direct file link and loaded it into the player.</div>';
+        } else if(json && json.data && json.data.downloadPage){
+          videoURL.value = json.data.downloadPage;
+          video.src = json.data.downloadPage; video.load();
+          uploadResult.innerHTML += '<div class="small" style="margin-top:8px">Loaded the GoFile page URL (may not play due to CORS). If playback fails, open the page and copy the direct file link (.mp4) into the input.</div>';
+        }
+        renderComments();
+      }catch(err){
+        uploadResult.innerHTML = '<div class="small">Upload failed: '+escapeHtml(err.message||err)+'</div>';
+      }
+    });
+
+    // Export / Import
+    btnExport.addEventListener('click', ()=>{
+      const src = video.src || videoURL.value || '';
+      if(!src){ alert('Load a video first'); return }
+      const comments = loadCommentsFor(src);
+      const payload = { video: src, comments };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href=url; a.download = 'comments.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    });
+
+    btnImport.addEventListener('click', ()=>{
+      const inp = document.createElement('input'); inp.type='file'; inp.accept='application/json';
+      inp.onchange = (e)=>{
+        const f = e.target.files[0]; if(!f) return;
+        const r = new FileReader(); r.onload = ()=>{
+          try{
+            const data = JSON.parse(r.result);
+            if(!data.video || !data.comments) { alert('Invalid file format'); return }
+            // If current video matches video in file — merge or overwrite
+            if(confirm('Import comments for video:\n'+data.video+'\n\nClick OK to replace current comments for that video, Cancel to merge.')){
+              saveCommentsFor(data.video, data.comments);
+            } else {
+              const existing = loadCommentsFor(data.video);
+              const merged = existing.concat(data.comments);
+              saveCommentsFor(data.video, merged);
+            }
+            videoURL.value = data.video; video.src = data.video; video.load(); renderComments();
+            alert('Imported successfully');
+          }catch(err){ alert('Import failed: '+err.message) }
+        };
+        r.readAsText(f);
+      };
+      inp.click();
+    });
+
+    // On load, if page has ?v= param, auto-fill
+    (function(){
+      const urlp = new URL(location.href);
+      const v = urlp.searchParams.get('v');
+      if(v){ videoURL.value = v; video.src = v; video.load(); setTimeout(renderComments,200); }
+    })();
+
+    // initial render
+    renderComments();
+  </script>
+</body>
+</html>
