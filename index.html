@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Simple Video Review — GoFile Proxy Enabled</title>
+  <title>Simple Video Review — Export Comments Added</title>
   <style>
     body{font-family:Arial,Helvetica,sans-serif;background:#0f1724;color:#e6eef8;margin:0;padding:20px}
     h1{color:#06b6d4}
@@ -20,7 +20,7 @@
   </style>
 </head>
 <body>
-  <h1>DIY Video Review (GoFile Proxy Enabled)</h1>
+  <h1>DIY Video Review (with Export Comments)</h1>
   <p>Paste your <strong>GoFile</strong> link or any direct video URL below. The app will automatically use a CORS proxy for playback if needed.</p>
   <input id="videoURL" type="text" placeholder="Paste direct .mp4 link or GoFile /d/... link here">
   <button id="btnLoad">Load Video</button>
@@ -31,6 +31,7 @@
     <h3>Add Comment</h3>
     <textarea id="commentText" placeholder="Type comment..."></textarea>
     <button id="btnAdd">Add Comment at Current Time</button>
+    <button id="btnExport" class="ghost">Export Comments</button>
   </div>
 
   <h3>Comments</h3>
@@ -43,6 +44,7 @@
     const commentText = document.getElementById('commentText');
     const btnAdd = document.getElementById('btnAdd');
     const commentList = document.getElementById('commentList');
+    const btnExport = document.getElementById('btnExport');
 
     // Detect GoFile links and use proxy
     function makePlayableURL(url){
@@ -52,7 +54,6 @@
         // Extract ID
         const id = finalURL.split('/d/')[1]?.split(/[/?#]/)[0];
         if(id){
-          // Use GoFile API to fetch file info via proxy
           finalURL = `https://corsproxy.io/?https://api.gofile.io/getContent?contentId=${id}`;
           fetch(finalURL)
             .then(r=>r.json())
@@ -71,7 +72,6 @@
           return '';
         }
       }
-      // If normal GoFile direct link, wrap with proxy if blocked
       if(finalURL.includes('store') && finalURL.includes('gofile.io')){
         finalURL = `https://corsproxy.io/?${finalURL}`;
       }
@@ -87,7 +87,7 @@
       }
     });
 
-    // Commenting system (localStorage)
+    // Comment system
     function key(){return 'review:'+(video.src||videoURL.value);}
     function loadComments(){try{return JSON.parse(localStorage.getItem(key())||'[]');}catch(e){return []}}
     function saveComments(arr){localStorage.setItem(key(),JSON.stringify(arr));}
@@ -121,6 +121,23 @@
         video.currentTime=t;
         video.play();
       }
+    });
+
+    // Export comments as JSON
+    btnExport.addEventListener('click', ()=>{
+      const comments = loadComments();
+      if(!comments.length){alert('No comments to export');return;}
+      const data = {
+        video: video.src || videoURL.value,
+        comments: comments
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'comments.json';
+      a.click();
+      URL.revokeObjectURL(url);
     });
 
     renderComments();
