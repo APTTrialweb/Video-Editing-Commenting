@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Simple Video Review — Export Comments Added</title>
+  <title>Simple Video Review — Share Link + Export</title>
   <style>
     body{font-family:Arial,Helvetica,sans-serif;background:#0f1724;color:#e6eef8;margin:0;padding:20px}
     h1{color:#06b6d4}
@@ -17,22 +17,27 @@
     ul{list-style:none;padding:0;margin:0;margin-top:10px}
     li{background:#152238;padding:8px;border-radius:8px;margin-bottom:6px}
     .time-link{color:#06b6d4;cursor:pointer;text-decoration:underline}
+    .readonly-note{background:#152238;padding:10px;border-radius:8px;margin-top:20px;color:#94a3b8}
   </style>
 </head>
 <body>
-  <h1>DIY Video Review (with Export Comments)</h1>
-  <p>Paste your <strong>GoFile</strong> link or any direct video URL below. The app will automatically use a CORS proxy for playback if needed.</p>
-  <input id="videoURL" type="text" placeholder="Paste direct .mp4 link or GoFile /d/... link here">
+  <h1>DIY Video Review (Share Link + Export)</h1>
+  <p>Paste your <strong>Dropbox</strong>, <strong>GoFile</strong>, or any direct video URL below. The app auto-converts links and lets you add timestamped comments.</p>
+
+  <input id="videoURL" type="text" placeholder="Paste direct .mp4 or share link here">
   <button id="btnLoad">Load Video</button>
 
   <video id="video" controls></video>
 
-  <div class="comment-box">
+  <div id="editSection" class="comment-box">
     <h3>Add Comment</h3>
     <textarea id="commentText" placeholder="Type comment..."></textarea>
     <button id="btnAdd">Add Comment at Current Time</button>
     <button id="btnExport" class="ghost">Export Comments</button>
+    <button id="btnShare" class="ghost">Generate Share Link</button>
   </div>
+
+  <div id="shareBox" class="readonly-note" style="display:none;"></div>
 
   <h3>Comments</h3>
   <ul id="commentList"></ul>
@@ -45,25 +50,41 @@
     const btnAdd = document.getElementById('btnAdd');
     const commentList = document.getElementById('commentList');
     const btnExport = document.getElementById('btnExport');
+    const btnShare = document.getElementById('btnShare');
+    const editSection = document.getElementById('editSection');
+    const shareBox = document.getElementById('shareBox');
 
-    // Detect GoFile links and use proxy
+    // Convert seconds → hh:mm:ss
+    function formatTime(seconds){
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      const pad = n => n.toString().padStart(2,'0');
+      return `${pad(h)}:${pad(m)}:${pad(s)}`;
+    }
+
+    // Detect Dropbox / GoFile links
     function makePlayableURL(url){
       if(!url) return '';
       let finalURL = url.trim();
+
+      if(finalURL.includes('dropbox.com')){
+        finalURL = finalURL.replace('www.dropbox.com','dl.dropboxusercontent.com');
+        finalURL = finalURL.replace('?dl=0','');
+      }
+
       if(finalURL.includes('gofile.io/d/')){
-        // Extract ID
         const id = finalURL.split('/d/')[1]?.split(/[/?#]/)[0];
         if(id){
-          finalURL = `https://corsproxy.io/?https://api.gofile.io/getContent?contentId=${id}`;
-          fetch(finalURL)
+          const apiURL = `https://corsproxy.io/?https://api.gofile.io/getContent?contentId=${id}`;
+          fetch(apiURL)
             .then(r=>r.json())
             .then(data=>{
               if(data.status==='ok' && data.data && data.data.contents){
                 const files = Object.values(data.data.contents);
                 const firstFile = files.find(f=>f.link?.endsWith('.mp4')) || files[0];
                 if(firstFile){
-                  const playable = `https://corsproxy.io/?${firstFile.link}`;
-                  video.src = playable;
+                  video.src = `https://corsproxy.io/?${firstFile.link}`;
                   video.load();
                 } else alert('No playable .mp4 found in this GoFile folder');
               } else alert('Could not fetch GoFile data');
@@ -87,7 +108,7 @@
       }
     });
 
-    // Comment system
+    // Local comment system
     function key(){return 'review:'+(video.src||videoURL.value);}
     function loadComments(){try{return JSON.parse(localStorage.getItem(key())||'[]');}catch(e){return []}}
     function saveComments(arr){localStorage.setItem(key(),JSON.stringify(arr));}
@@ -98,7 +119,7 @@
       comments.sort((a,b)=>a.time-b.time);
       for(const c of comments){
         const li=document.createElement('li');
-        li.innerHTML=`<span class='time-link' data-time='${c.time}'>${c.time.toFixed(1)}s</span> - ${c.text}`;
+        li.innerHTML=`<span class='time-link' data-time='${c.time}'>${formatTime(c.time)}</span> - ${c.text}`;
         commentList.appendChild(li);
       }
     }
@@ -123,14 +144,11 @@
       }
     });
 
-    // Export comments as JSON
+    // Export comments
     btnExport.addEventListener('click', ()=>{
       const comments = loadComments();
       if(!comments.length){alert('No comments to export');return;}
-      const data = {
-        video: video.src || videoURL.value,
-        comments: comments
-      };
+      const data = {video: video.src || videoURL.value, comments};
       const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -140,7 +158,39 @@
       URL.revokeObjectURL(url);
     });
 
-    renderComments();
+    // Generate share link (Base64)
+    btnShare.addEventListener('click', ()=>{
+      const comments = loadComments();
+      if(!comments.length){alert('No comments to share');return;}
+      const data = {video: video.src || videoURL.value, comments};
+      const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+      const link = `${location.origin}${location.pathname}?data=${encoded}`;
+      shareBox.style.display='block';
+      shareBox.innerHTML = `<strong>Share this link:</strong><br><input type='text' value='${link}' style='width:100%;margin-top:6px;padding:6px;border-radius:6px;border:none;'>`;
+      navigator.clipboard.writeText(link).catch(()=>{});
+    });
+
+    // Check for shared data in URL
+    const params = new URLSearchParams(location.search);
+    if(params.has('data')){
+      try{
+        const decoded = decodeURIComponent(escape(atob(params.get('data'))));
+        const parsed = JSON.parse(decoded);
+        if(parsed.video){
+          video.src = parsed.video;
+          video.load();
+          localStorage.setItem(key(), JSON.stringify(parsed.comments||[]));
+          renderComments();
+          editSection.style.display='none';
+          shareBox.style.display='block';
+          shareBox.innerHTML='<strong>Read-only mode:</strong> You are viewing shared comments.';
+        }
+      }catch(e){
+        console.error('Error loading shared data:', e);
+      }
+    } else {
+      renderComments();
+    }
   </script>
 </body>
 </html>
