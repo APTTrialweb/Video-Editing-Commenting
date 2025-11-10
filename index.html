@@ -58,7 +58,7 @@
     const editorName = document.getElementById('editorName');
 
     // 🟢 Replace this with your deployed Google Apps Script URL:
-    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwvGd96YPqzSlFuAEFJXbbjDP4LtMz-Ox_PyE4heGP9D1g7NSrfImF9XP3Y8EmzcWMvFQ/exec";
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxTr4I4mydhvd8cGPjoYBlu1psYMcpyqL7Bee77gQHvpnGdqHNaoCTuNPZYLEUqguN8QQ/exec";
 
     // Format seconds → hh:mm:ss
     function formatTime(seconds){
@@ -164,8 +164,8 @@
       URL.revokeObjectURL(url);
     });
 
-    // Generate share link + log to Google Sheets
-    btnShare.addEventListener('click', ()=>{
+    // 🔹 Generate share link + TinyURL shortener + log to Google Sheets
+    btnShare.addEventListener('click', async ()=>{
       const comments = loadComments();
       const editor = editorName.value.trim();
       if(!comments.length){alert('No comments to share');return;}
@@ -173,26 +173,44 @@
 
       const data = {video: video.src || videoURL.value, comments};
       const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
-      const link = `${location.origin}${location.pathname}?data=${encoded}`;
+      const longLink = `${location.origin}${location.pathname}?data=${encoded}`;
 
-      // Display share link
-      shareBox.style.display='block';
-      shareBox.innerHTML = `<strong>Link assigned to ${editor}:</strong><br><input type='text' value='${link}' style='width:100%;margin-top:6px;padding:6px;border-radius:6px;border:none;'>`;
+      try {
+        // Create short link via TinyURL API (free fallback)
+        let shortLink = '';
+        try {
+          const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longLink)}`);
+          shortLink = await res.text();
+        } catch (err) {
+          shortLink = longLink; // fallback if API fails
+        }
 
-      // Log assignment to Google Sheets
-      fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          editor: editor,
-          video: video.src || videoURL.value,
-          shareLink: link
-        })
-      }).then(()=> console.log("Logged to Google Sheet"))
-        .catch(err=> console.error("Error logging:", err));
+        // Display short link
+        shareBox.style.display='block';
+        shareBox.innerHTML = `<strong>Link assigned to ${editor}:</strong><br>
+          <input type='text' value='${shortLink}' style='width:100%;margin-top:6px;padding:6px;border-radius:6px;border:none;'>`;
 
-      navigator.clipboard.writeText(link).catch(()=>{});
+        // Log to Google Sheet
+        fetch(GOOGLE_SCRIPT_URL, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            editor: editor,
+            video: video.src || videoURL.value,
+            shareLink: shortLink
+          })
+        }).then(()=> console.log("Logged to Google Sheet"))
+          .catch(err=> console.error("Error logging:", err));
+
+        // Copy to clipboard
+        navigator.clipboard.writeText(shortLink).then(()=>{
+          alert("✅ Short link copied!");
+        }).catch(()=>{});
+
+      } catch (err) {
+        console.error("Error creating short link:", err);
+        alert("❌ Error creating short link");
+      }
     });
 
     // Read-only mode for shared links
